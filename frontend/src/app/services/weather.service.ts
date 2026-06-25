@@ -28,3 +28,10 @@ export class WeatherService {
     return this.http.get<CachedCity[]>(`${this.base}/cached`);
   }
 }
+
+
+
+
+
+
+
