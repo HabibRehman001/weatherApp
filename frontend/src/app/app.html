@@ -1,0 +1,117 @@
+<div class="scene">
+  <div class="blob-layer" #blobLayer aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="blob blob-4"></div>
+  </div>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <main class="shell">
+    <div class="shell-main">
+    <header class="hero animate-in">
+      <p class="eyebrow">Live forecast</p>
+      <h1>Sky<span>Cast</span></h1>
+      <p class="tagline">Gradient skies. Real-time weather.</p>
+    </header>
+
+    <section class="search-card glass animate-in delay-1">
+      <form (submit)="$event.preventDefault(); onSearch()" class="search-row">
+        <div class="input-wrap">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input
+            type="text"
+            [(ngModel)]="query"
+            name="city"
+            placeholder="Search city — try Karachi, Tokyo, Paris…"
+            autocomplete="off"
+            (input)="onInput()"
+            (keydown)="onKeydown($event)"
+            (blur)="onInputBlur()"
+          />
+          @if (showSuggestions()) {
+            <ul class="suggestions animate-dropdown">
+              @for (s of suggestions(); track s.name + s.country; let i = $index) {
+                <li
+                  [class.active]="activeSuggestion() === i"
+                  (mousedown)="$event.preventDefault(); pickSuggestion(s)"
+                >
+                  <span class="sug-name">{{ s.name }}</span>
+                  <span class="sug-meta">{{ s.admin1 ? s.admin1 + ', ' : '' }}{{ s.country }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+        <button type="submit" class="btn-glow" [disabled]="loading()">
+          @if (loading()) {
+            <span class="spinner"></span>
+          } @else {
+            Search
+          }
+        </button>
+      </form>
+
+      @if (error()) {
+        <p class="error-msg animate-in">{{ error() }}</p>
+      }
+    </section>
+
+    @if (result(); as data) {
+      <section class="weather-card glass animate-in delay-2">
+        <div class="weather-top">
+          <div>
+            <h2>{{ data.city }}</h2>
+            <p class="location">{{ data.country }}</p>
+          </div>
+          <span class="badge" [class.cached]="data.source === 'cache'">
+            {{ data.source === 'cache' ? '⚡ cached' : '🌐 live' }}
+          </span>
+        </div>
+
+        <div class="temp-block">
+          <span class="temp">{{ data.weather.current.temperature_2m | number: '1.0-0' }}</span>
+          <span class="unit">°C</span>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-label">Wind</span>
+            <span class="stat-value">{{ data.weather.current.wind_speed_10m }} km/h</span>
+          </div>
+          @if (humidity(); as h) {
+            <div class="stat">
+              <span class="stat-label">Humidity</span>
+              <span class="stat-value">{{ h }}%</span>
+            </div>
+          }
+          <div class="stat">
+            <span class="stat-label">Updated</span>
+            <span class="stat-value">{{ data.fetchedAt | date: 'short' }}</span>
+          </div>
+        </div>
+      </section>
+    } @else if (!loading() && !error() && !query.trim()) {
+      <section class="placeholder glass animate-in delay-2">
+        <div class="placeholder-icon">☁</div>
+        <p>Type a city name and hit search to see the forecast.</p>
+      </section>
+    }
+
+    </div>
+
+    @if (recent().length) {
+      <section class="recent animate-in delay-3">
+        <h3>Recent searches</h3>
+        <div class="chips">
+          @for (c of recent(); track c.id) {
+            <button type="button" class="chip" (click)="pickRecent(c.city)">
+              {{ c.city }}, {{ c.country }}
+            </button>
+          }
+        </div>
+      </section>
+    }
+  </main>
+</div>

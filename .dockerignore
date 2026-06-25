@@ -1,0 +1,12 @@
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+backend/public
+public
+.git
+.gitignore
+.cursor
+**/*.md
+changes.txt
+frontend/.angular

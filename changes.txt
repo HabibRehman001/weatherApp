@@ -1,0 +1,244 @@
+================================================================================
+                         WEATHER APP — API DOCUMENTATION
+================================================================================
+
+Base URL (local):  http://localhost:3000
+API prefix:        /api
+Content-Type:      application/json
+CORS:              Enabled (all origins)
+
+Static frontend is served from the same server at http://localhost:3000/
+
+--------------------------------------------------------------------------------
+ENVIRONMENT VARIABLES  (backend/.env)
+--------------------------------------------------------------------------------
+
+  PORT          Server port                          Default: 3000
+  MONGODB_URI   MongoDB connection string            Default: mongodb://localhost:27017/weatherapp
+  NODE_ENV      Environment name                     Default: development
+
+--------------------------------------------------------------------------------
+ENDPOINTS
+--------------------------------------------------------------------------------
+
+────────────────────────────────────────────────────────────────────────────────
+1. HEALTH CHECK
+────────────────────────────────────────────────────────────────────────────────
+
+  GET /api/health
+
+  Description:
+    Confirms the API process is running. Use for uptime monitors / load balancers.
+
+  Request:
+    No parameters.
+
+  Response 200:
+    {
+      "status": "ok",
+      "service": "weather-api"
+    }
+
+  Example:
+    curl http://localhost:3000/api/health
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. SEARCH WEATHER
+────────────────────────────────────────────────────────────────────────────────
+
+  GET /api/weather/search
+
+  Description:
+    Fetches weather for a city or coordinates.
+    - By city: geocodes the name via Open-Meteo, then fetches forecast.
+    - By coords: fetches forecast directly for lat/lon.
+    - Results are cached in MongoDB for 1 hour (source: "cache" vs "api").
+
+  Query parameters (one mode required):
+
+    Mode A — city search
+      city   string   City name (e.g. Berlin, Karachi)
+
+    Mode B — coordinate search
+      lat    number   Latitude  (e.g. 52.52)
+      lon    number   Longitude (e.g. 13.41)
+
+  Response 200:
+    {
+      "source": "cache" | "api",
+      "city": "Berlin",
+      "country": "Germany",
+      "latitude": 52.52,
+      "longitude": 13.41,
+      "fetchedAt": "2026-06-25T18:00:00.000Z",
+      "weather": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "time": "2026-06-25T18:00",
+          "temperature_2m": 22.4,
+          "wind_speed_10m": 11.9
+        },
+        "hourly": {
+          "time": ["2026-06-25T00:00", "2026-06-25T01:00", ...],
+          "temperature_2m": [18.1, 17.5, ...],
+          "relative_humidity_2m": [72, 75, ...],
+          "wind_speed_10m": [8.2, 7.9, ...]
+        }
+      }
+    }
+
+  Response 400 — missing or invalid input:
+    { "error": "Provide ?city=Berlin or ?lat=52.52&lon=13.41" }
+    { "error": "Invalid lat/lon values" }
+
+  Response 404 — city not found:
+    { "error": "No city found for \"xyz\"" }
+
+  Response 500 — server / external API error:
+    { "error": "Failed to fetch weather" }
+
+  Examples:
+    curl "http://localhost:3000/api/weather/search?city=Karachi"
+    curl "http://localhost:3000/api/weather/search?lat=24.86&lon=67.01"
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. CITY SUGGESTIONS (AUTOCOMPLETE)
+────────────────────────────────────────────────────────────────────────────────
+
+  GET /api/weather/suggestions
+
+  Description:
+    Returns matching city names while the user types in the search input.
+    Powered by Open-Meteo geocoding API. Returns up to 8 matches.
+    Requires at least 2 characters; shorter queries return an empty array.
+
+  Query parameters:
+    q   string   Partial city name (e.g. "kar" → Karachi, Kolachi, ...)
+
+  Response 200:
+    [
+      {
+        "name": "Karachi",
+        "country": "Pakistan",
+        "admin1": "Sindh",
+        "latitude": 24.8608,
+        "longitude": 67.0104
+      },
+      {
+        "name": "Karbala",
+        "country": "Iraq",
+        "admin1": "Karbala",
+        "latitude": 32.616,
+        "longitude": 44.024
+      }
+    ]
+
+  Response 200 (query < 2 chars):
+    []
+
+  Response 500:
+    { "error": "Failed to load suggestions" }
+
+  Example:
+    curl "http://localhost:3000/api/weather/suggestions?q=kar"
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. CACHED WEATHER
+────────────────────────────────────────────────────────────────────────────────
+
+  GET /api/weather/cached
+
+  Description:
+  Returns previously searched cities stored in MongoDB.
+  - Without ?q: all cached searches (summary only, no weather payload).
+  - With ?q: partial city name filter (up to 10 results, includes full weather).
+
+  Query parameters:
+    q   string   optional   Partial city name filter
+
+  Response 200 — all cached (no ?q):
+    [
+      {
+        "id": "665f1a2b3c4d5e6f7a8b9c0d",
+        "city": "Karachi",
+        "country": "Pakistan",
+        "latitude": 24.8608,
+        "longitude": 67.0104,
+        "fetchedAt": "2026-06-25T18:00:00.000Z"
+      }
+    ]
+
+  Response 200 — filtered (with ?q):
+    [
+      {
+        "id": "665f1a2b3c4d5e6f7a8b9c0d",
+        "city": "Karachi",
+        "country": "Pakistan",
+        "latitude": 24.8608,
+        "longitude": 67.0104,
+        "fetchedAt": "2026-06-25T18:00:00.000Z",
+        "weather": { ...same shape as /search weather object... }
+      }
+    ]
+
+  Response 500:
+    { "error": "Failed to load cached weather" }
+
+  Examples:
+    curl http://localhost:3000/api/weather/cached
+    curl "http://localhost:3000/api/weather/cached?q=kar"
+
+
+--------------------------------------------------------------------------------
+DATA FLOW
+--------------------------------------------------------------------------------
+
+  Client request
+       ↓
+  routes/api/          →  HTTP path mapping only
+       ↓
+  controllers/         →  parse query, status codes, error handling
+       ↓
+  services/            →  business logic, cache TTL (1 hour), Open-Meteo calls
+       ↓
+  db/weatherRepository →  MongoDB read/write (WeatherCache model)
+       ↓
+  Open-Meteo APIs:
+    - Geocoding:  https://geocoding-api.open-meteo.com/v1/search
+    - Forecast:   https://api.open-meteo.com/v1/forecast
+
+
+--------------------------------------------------------------------------------
+ERROR FORMAT
+--------------------------------------------------------------------------------
+
+  All error responses use:
+
+    { "error": "<message>" }
+
+  Status codes:
+    200   Success
+    400   Bad request (missing/invalid query params)
+    404   City not found (search only)
+    500   Internal server error
+
+
+--------------------------------------------------------------------------------
+RUNNING THE SERVER
+--------------------------------------------------------------------------------
+
+  cd backend
+  npm install
+  npm run dev          # development (tsx watch)
+  npm run build        # compile TypeScript
+  npm start            # production (node dist/index.js)
+
+  Server starts at:  http://localhost:3000  (or PORT from .env)
+  API base:          http://localhost:3000/api
+
+================================================================================
